@@ -1,7 +1,287 @@
 <html>
 	<head>
+		<style>
+			body {
+			  background-color: white;
+			  padding: 100px;
+			  width: 1000px;
+			  margin: auto;
+			  text-align: center;
+			  font-weight: 300;
+			  font-family: 'Open Sans', sans-serif;
+			  color: #121212;
+			}
+			h1, h2, h3, h4 {
+			  font-family: 'Source Sans Pro', sans-serif;
+			}
+			p {
+				text-align: left;
+			}
+			kbd {
+			  color: #121212;
+			}
+			.grid {
+				display: grid;
+				grid-template-columns: repeat(2, 1fr);
+				grid-gap: 20px;
+			}
+			.grid img {
+				width: 100%;
+				height: auto;
+				display: block;
+			}
+			.row {
+            	margin-bottom: 20px;
+			}
+			.row-label {
+				font-weight: bold;
+				margin-bottom: 5px;
+			}
+			.image-label {
+				font-style: italic;
+				margin-top: 5px;
+			}
+			.image-container {
+				display: inline-block;
+				margin-right: 10px;
+				margin-bottom: 10px;
+			}
+			.image-container img {
+				display: block;
+				max-width: 150px;
+				height: auto;
+				margin-bottom: 5px;
+			}
+		  </style>
+		  <title>CS 184 Mesh Edit</title>
+		  <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+		  <link href="https://fonts.googleapis.com/css?family=Open+Sans|Source+Sans+Pro" rel="stylesheet">
+		  
+		  <script>
+			MathJax = {
+			  tex: {
+				inlineMath: [['$', '$'], ['\\(', '\\)']]
+			  }
+			};
+		  </script>
+		  <script id="MathJax-script" async
+			src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
+		  </script>
 	</head>
 	<body>
-		Homework 3 index.html here
+		<h1>CS 184: Computer Graphics and Imaging, Spring 2024</h1>
+		<h1>Project 3: Pathtracer</h1>
+		<h2>Arav and Sophia</h2>
+		<br><br>
+
+		<h2>Overview</h2>
+		<p>In this homework, we created a simple physically-based renderer using pathtracing and various sampling/rendering algorithms.
+
+			In total, our renderer can take in DAE files and render them with significant performance upgrades over naive/rudimentary implementations, and has various user flags that can aid in utilizing certain sampling methods or adjusting parameters based on the users’ wishes.
+			
+			Overall, there were many things we took away from this assignment. Firstly, it is apparent that there are several small details that are critical for performance and accurate rendering. Even small epsilon constants can reduce noise, have great impact on the output images, and even prevent segfaults. After implementation, it is clear that physically-based rendering is very involved, and is even computationally difficult sometimes: some single frames took several minutes to render, even with only one character/asset being displayed. It is incredible to consider that in animation, for example, production teams have to animate hours-long movies that run at 60+ frames per second (of course, likely with significant improvements over our code).
+			</p>
+
+		<h3>Part 1: Ray Generation and Scene Intersection</h3>
+		<p>In this task, we worked on implementing the functionality of ray generation and scene intersection – checking to see if and where rays intersect with triangles and spheres. We began by working to generate camera rays after intaking normalized image coordinates. This involved transforming the image coordinates to camera space, generating a Ray in camera space, and subsequently transforming it into world space. We also generate pixel samples through averaging ns_aa samples, and estimating scene radiance along these rays. Finally, we implemented both ray-triangle and ray-sphere intersection algorithms, enabling us to render basic components, and which also can act as building blocks for the future steps of the project.
+
+			To generate rays, we ensure that the inputted normalized image coordinates are correctly between 0 and 1 (inclusive) and transform the coordinates to the coordinates on the sensor in camera space (plane held at -1 on the z-axis). We made sure to convert hFov and vFov to radians! Subsequently, we used the c2w transformation matrix to convert the coordinates to world space and utilized the resulting values as the components of our ray (as well as using the given camera position in world space).
+			
+			The triangle intersection algorithm computes the t-value of the ray-plane intersection. This value represents the “time” or position on the ray that hits the plane of the triangle. If t is between t_min and t_max non-negative values bounding t for a given ray, then a valid ray-plane intersection has been found. In order to determine whether or not the point is within the triangle, we can use the barycentric coordinates with respect to the three vertices of the triangle. To calculate both the t-value and barycentric coordinates, we used the Moller Trumbore algorithm. If the barycentric coordinates are all non-negative and sum to one (within some small floating point margin of error), then the intersection point is within the triangle.
+			
+			For ray-sphere intersection, the algorithm computes the t-value using the same principle, except using the equation of a sphere rather than that of a plane. A ray and sphere have up to two points of intersection, meaning that we take the closer of the two points if there are indeed two points of intersection, since that is where light hits. To implement this, we placed most of our logic handling the t_min and t_max bounding, as well as taking the closer intersection point inside of the Sphere::test helper function.
+			</p>
+		<h4>Some small meshes generated in this task:</h4>
+		<div class="grid">
+			<img src="images/task1_1.png">
+			<img src="images/task1_2.png">
+			<img src="images/task1_3.png">
+			<img src="images/task1_4.png">
+		</div>
+		<br></br>
+
+
+		<h3>Part 2: Bounding Volume Hierarchy</h3>
+		<p>Our BVH construction algorithm first iterates through all primitives from iterator start to iterator end, aggregating them into a bounding box and counting the number of primitives. If the number of primitives is less than the max leaf size, we simply return the node with the bounding box. If it is not a leaf node, we first determine the split axis by comparing the ranges of the x, y, and z coordinates of the primitives and use the corresponding axis with the largest range. The heuristic we used for our split value was the average split axis coordinate value of all primitives in the bounding box. Using this split axis and split value, we then sort the primitives by the split axis coordinate and determine the split point, marking it with an iterator pointer. Lastly, pointers to the start and end points for the left and right nodes are passed into recursive calls to construct_bvh.
+		</p>
+		<div class="grid">
+			<img src="images/task2_1.png">
+			<img src="images/task2_2.png">
+			<img src="images/task2_3.png">
+			<img src="images/task2_4.png">
+		</div>
+		<p>CBlucy was originally taking several minutes, around 500 seconds on one run. Other larger files took anywhere from 120 seconds to 400 seconds. After optimization, these renders run in under a second, generally ranging from under 0.1 seconds to 0.8 seconds (variance is also hardware dependent, based on which partner’s laptop is running the code). This presents a clear improvement, and one which is significant in rendering complex scenes (especially if this were part of a larger project such as an animation that required many frames). The delta in rendering times is even greater in subsequent parts with certain scenes going from several hours of rendering to just minutes, with all the performance improvements and implementations we use.
+		</p>
+		<br></br>
+
+
+		<h3>Part 3: Direct Illumination</h3>
+		<p>In this task, we implemented two functions to estimate direct lighting by both sampling uniformly in a hemisphere as well as light importance sampling through sampling all lights directly, while also building out the functionality to represent diffuse material that reflects light equally in all directions of the hemisphere, as well as zero bounce lighting, aka the light that comes from the light source itself.</p>
+
+		<p>For uniform hemisphere sampling, we uniformly sample in a hemisphere to estimate the lighting- the process is roughly as follows: we (approximate) the integral of all the light arriving at a point in a hemisphere using a Monte Carlo estimator whose equation is as described in lecture and the spec. We are careful to convert the various variables into the correct spaces using the w2o and o2w converters. This was particularly applicable when constructing a ray to pass into our intersection function, by converting our sample to world coordinates and assigning it to the ray’s direction. A niche but helpful implementation detail was that we also set our min_t for the ray to be a small epsilon constant to avoid object/ray-origin intersection. After receiving an estimate for the incoming light, the reflection equation allows us to obtain a value for the outgoing light!</p>
+			
+		<p>Our second implementation is sampling all the lights directly by sampling all the directions from the light source to hit_p. The high level structure of this implementation is actually quite similar and has several parallels to the uniform hemisphere sampling, albeit with some important distinctions. Firstly, we implement a robust check to see if the current light that we are at in our iteration is a point light. If so, we only sample once as compared to sampling ns_area_light times if it is not a point light. Beyond this, the process is the same for point/non-point lights, save for the aggregation method (which is effectively either adding to L_out with the reflection equation OR in the case of the non-point light, first dividing the running total by ns_area_light before subsequently adding to L_out. Two interesting, small implementation details are that we set our ray’s min_t to the epsilon constant and max_t to distToLight (with a small epsilon constant as well).</p>
+		
+		<h4>Hemisphere sampling (left) and Importance sampling (right)</h4>
+		<div class="grid">
+			<img src="images/3.2-1H.png">
+			<img src="images/3.2-2I.png">
+			<img src="images/3.2-5H.png">
+			<img src="images/3.2-6I.png">
+		</div>
+
+		<p>The noise level of soft shadows improves as the number of light rays increase, though the most notable improvement certainly comes between the jump between 16 and 64 light rays (holding the samples per pixel to 1 as a constant across all images).
+
+			The lighting sampling provides less noise, which intuitively makes sense with our Monte Carlo implementation of hemisphere sampling. Since our outgoing rays in the hemisphere sampling function will effectively never intersect with point lights, the lighting sampling provides value in rendering scenes with these point lights. Yet, despite the extra noise from the uniform hemisphere sampling and inability to render point lights, the scenes generated from hemisphere sampling are in fact quite good and without much aliasing– really the main visible difference remains the noise level. 
+		</p>
+		<br></br>
+
+
+		<h3>Part 4: Global Illumination</h3>
+		<p>In this part, we implemented indirect lighting in order to allow for global illumination, providing visual richness. Our implementation of indirect lighting is mainly in the function at_least_one_bounce_radiance. We first call one_bounce_radiance and add the return value to L_out if isAccumulateBounce is enabled or the input ray’s depth is equal to 1. With Russian Roulette enabled, we call coin_flip with an input of 0.4 and use this to determine whether or not to continue recursing. However, we always make the recursive calls if the ray’s depth is 0 or 1 and max_ray_depth is greater than or equal to 1. The inputs for the recursive call is the new ray and intersect object, which are computed by first using the sample_f function to sample the “next” direction of the light ray (which in physical reality would be the source of the light ray since we trace rays backwards from the camera). The new ray’s fields and the intersect struct are populated based on the intersection point of the sample direction with the primitive that the new ray would hit. Lastly, the return value of our recursive call along with the multiplicative (sample_f return value and cos_theta terms) and normalizing (PDF and CPDF with Russian Roulette) factors are added to L_out before it is returned. </p>
+		<p>In the second bounce image, light appears to radiate from all four sides of the box, and a soft light appears to be illuminating the bunny from below. The ceiling is also notably brighter than the floor. At this stage, the light that came from direct illumination has bounced off of its points of contact onto the “next” points, meaning that light that had hit the floor is bouncing back to illuminate the bunny and ceiling, causing the overall lighting to look inverted from the one bounce image. In the third bounce, the scene appears dimmer than in the second bounce. The walls and ceiling are a bit brighter than the bunny, but there is overall less contrast than previous bounces and it looks as though the remaining light has evened out compared to before.</p>
+
+		<h4>Some images rendered with global (direct and indirect) illumination:</h4>
+		<div class="grid">
+			<img src="images/task4/task4_global_walle.png">
+			<img src="images/task4/task4_global_dragon.png">
+			<img src="images/task4/task4_accum_m4.png">
+			<img src="images/task4/task4_sample1024.png">
+		</div>
+		<br></br>
+		<h4>Only direct illumination and only indirect illumination:</h4>
+		<div class="grid">
+			<img src="images/task4/task4_direct_only.png">
+			<img src="images/task4/task4_indirect_m4.png">
+		</div>
+		<br></br>
+
+		<div class="row">
+			<div class="row-label">Accumulate Bounces</div>
+			<div class="image-container">
+				<img src="images/task4/task4_0_bounce.png" alt="Image 1">
+				<div class="image-label">0 bounce</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_accum_m1.png" alt="Image 2">
+				<div class="image-label">1 bounce</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_accum_m2.png" alt="Image 3">
+				<div class="image-label">2 bounce</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_accum_m3.png" alt="Image 4">
+				<div class="image-label">3 bounce</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_accum_m4.png" alt="Image 5">
+				<div class="image-label">4 bounce</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_accum_m5.png" alt="Image 5">
+				<div class="image-label">5 bounce</div>
+			</div>
+		</div>
+		<div class="row">
+			<div class="row-label">No Accumulate Bounces</div>
+			<div class="image-container">
+				<img src="images/task4/task4_0_bounce.png" alt="Image 6">
+				<div class="image-label">0 bounce</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_noaccum_m1.png" alt="Image 7">
+				<div class="image-label">1 bounce</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_noaccum_m2.png" alt="Image 8">
+				<div class="image-label">2 bounce</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_noaccum_m3.png" alt="Image 9">
+				<div class="image-label">3 bounce</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_noaccum_m4.png" alt="Image 10">
+				<div class="image-label">4 bounce</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_noaccum_m5.png" alt="Image 5">
+				<div class="image-label">5 bounce</div>
+			</div>
+		</div>
+		<br></br>
+		
+		<div class="row">
+			<div class="row-label">Russian Roulette</div>
+			<div class="image-container">
+				<img src="images/task4/task4_0_bounce.png" alt="Image 6">
+				<div class="image-label">m=0</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_russian_m1.png" alt="Image 7">
+				<div class="image-label">m=1</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_russian_m2.png" alt="Image 8">
+				<div class="image-label">m=2</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_russian_m3.png" alt="Image 9">
+				<div class="image-label">m=3</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_russian_m4.png" alt="Image 10">
+				<div class="image-label">m=4</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_russian_m100.png" alt="Image 5">
+				<div class="image-label">m=100</div>
+			</div>
+		</div>
+		<br></br>
+
+		<div class="row">
+			<div class="row-label">Rendered views with various sample-per-pixel rates:</div>
+			<div class="image-container">
+				<img src="images/task4/task4_sample1.png" alt="Image 6">
+				<div class="image-label">1 Sample</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_sample2.png" alt="Image 7">
+				<div class="image-label">2 Samples</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_sample4.png" alt="Image 8">
+				<div class="image-label">4 Samples</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_sample8.png" alt="Image 9">
+				<div class="image-label">8 Samples</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_sample16.png" alt="Image 10">
+				<div class="image-label">16 Samples</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_sample64.png" alt="Image 5">
+				<div class="image-label">64 Samples</div>
+			</div>
+			<div class="image-container">
+				<img src="images/task4/task4_sample1024.png" alt="Image 5">
+				<div class="image-label">1024 Samples</div>
+			</div>
+		</div>
+		<br></br>
+
+		<h3>Part 5: Adaptive Sampling</h3>
+		<p>Given a pixel sampling rate, adaptive sampling essentially decreases the number of ray samples per pixel depending on whether the pixel has converged, where convergence is determined by the number of samples taken thus far, the standard deviation, and the mean. If a pixel converges, samples are no longer taken at that pixel, reducing the number of samples. This means that fewer samples are taken at the less complex regions of the image that do not require so many samples to have a less noisy image. To implement adaptive sampling, we updated raytrace_pixel to accumulate the s1 and s2 values specified by the summations in the spec. Then, inside the for loop iterating through each camera ray sample, we check if that iteration is a multiple of samplesPerBatch. If it is, then we calculate the mean and variance of our samples and check if 1.96 * variance / sqrt(iteration number) is less than the maxTolerance * mean. If this inequality holds, then we cap the number of samples at the current iteration and exit the for loop. In the case that it does not hold, we simply increment our s1 and s2 values accordingly and proceed with the loop. After implementing adaptive sampling, there were two notable improvements: firstly, the performance increased since certain areas of the render converged quickly and thus did not need as many samples, and secondly, the amount of noise decreased in areas of the scene, meaning that the quality of the render was overall improved.</p>
+		<div class="grid">
+			<img src="images/task5_1.png">
+			<img src="images/task5_1_rate.png">
+			<img src="images/task5_2.png">
+			<img src="images/task5_2_rate.png">
+		</div>
+		<br></br>
 	</body>
 </html>
